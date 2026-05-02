@@ -1,9 +1,10 @@
 # Executables
-# plutonium.exe is required for the GitHub Action
 *.new
+plutonium-updater*
 
 # GitHub Actions local data
 dist/
+plutonium_data/
 plutonium_bundle.zip
 
 # System / Temp

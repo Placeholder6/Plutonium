@@ -1,4 +1,4 @@
-name: Plutonium Downloader
+name: Plutonium Downloader (Rust)
 
 on:
   workflow_dispatch:
@@ -7,64 +7,32 @@ on:
 
 jobs:
   run-and-upload:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Run Plutonium Updater
-        # NOTE: If plutonium.exe requires a login to download specific files, 
-        # you may need to provide credentials or a session file.
-        # This script assumes it can run headless for basic updates.
-        shell: pwsh
+      - name: Download Plutonium Rust Updater
         run: |
-          Write-Host "Starting plutonium.exe..."
-          # Start the process. We use -PassThru to get the process object.
-          $process = Start-Process -FilePath "./plutonium.exe" -ArgumentList "-update" -PassThru
-          
-          # Wait for a reasonable amount of time for downloads to complete.
-          # Plutonium's core files are around 100-200MB.
-          Write-Host "Waiting 3 minutes for downloads to complete..."
-          Start-Sleep -Seconds 180
-          
-          # Check if the process is still running and kill it if so.
-          if (-not $process.HasExited) {
-              Write-Host "Closing plutonium.exe..."
-              Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-          } else {
-              Write-Host "Plutonium finished naturally."
-          }
+          # Fetch the latest release version and download the Linux binary
+          LATEST_URL=$(curl -s https://api.github.com/repos/mxve/plutonium-updater.rs/releases/latest | grep "browser_download_url.*linux-gnu.tar.gz" | cut -d : -f 2,3 | tr -d \")
+          echo "Downloading from $LATEST_URL"
+          curl -L -o updater.tar.gz "$LATEST_URL"
+          tar -xzf updater.tar.gz
+          # The binary name is usually plutonium-updater
+          chmod +x plutonium-updater
 
-      - name: Check for downloaded files
-        shell: pwsh
+      - name: Run Updater
         run: |
-          $plutoniumPath = "$env:LOCALAPPDATA\Plutonium"
-          if (Test-Path $plutoniumPath) {
-              Write-Host "Found Plutonium data at: $plutoniumPath"
-              Get-ChildItem -Path $plutoniumPath -Recurse | Select-Object FullName
-          } else {
-              Write-Error "Plutonium data directory not found at $plutoniumPath. Check if the updater ran correctly."
-              exit 1
-          }
+          # -l: Download launcher assets
+          # -d: Specify directory
+          ./plutonium-updater -l -d ./plutonium_data
 
       - name: Prepare Files for Upload
-        shell: pwsh
         run: |
-          # Create a directory to gather all files
-          New-Item -ItemType Directory -Path "dist"
-          
-          # Copy downloaded files from AppData
-          if (Test-Path "$env:LOCALAPPDATA\Plutonium") {
-              Copy-Item -Path "$env:LOCALAPPDATA\Plutonium\*" -Destination "dist" -Recurse -Force
-          }
-          
-          # Copy files from the current directory, excluding the 'dist' folder and the zip itself
-          # We want to capture things like plutonium-launcher-win32.exe if they were downloaded to root
-          Get-ChildItem -Path "." -Exclude "dist", ".github", "plutonium_bundle.zip" | Copy-Item -Destination "dist" -Force
-          
-          # Zip the contents
-          Compress-Archive -Path "dist\*" -DestinationPath "plutonium_bundle.zip"
+          # Create a bundle of the downloaded data
+          zip -r plutonium_bundle.zip ./plutonium_data
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
