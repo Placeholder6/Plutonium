@@ -1,5 +1,5 @@
 # Executables
-*.exe
+# plutonium.exe is required for the GitHub Action
 *.new
 
 # GitHub Actions local data
