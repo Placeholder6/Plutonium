@@ -15,19 +15,28 @@ jobs:
 
       - name: Download Plutonium Rust Updater
         run: |
-          # Fetch the latest release version and download the Linux binary
-          LATEST_URL=$(curl -s https://api.github.com/repos/mxve/plutonium-updater.rs/releases/latest | grep "browser_download_url.*linux-gnu.tar.gz" | cut -d : -f 2,3 | tr -d \")
+          # Fetch the latest release version and download the Linux binary using jq for robustness
+          LATEST_URL=$(curl -s https://api.github.com/repos/mxve/plutonium-updater.rs/releases/latest | jq -r '.assets[] | select(.name | contains("linux-gnu.tar.gz")) | .browser_download_url')
           echo "Downloading from $LATEST_URL"
           curl -L -o updater.tar.gz "$LATEST_URL"
           tar -xzf updater.tar.gz
-          # The binary name is usually plutonium-updater
-          chmod +x plutonium-updater
+          # List files to verify binary name
+          ls -R
+          # Make sure any binary found is executable (guessing the name is plutonium-updater)
+          find . -name "plutonium-updater" -exec chmod +x {} \;
 
       - name: Run Updater
         run: |
+          # Find the binary (it might be in a subdirectory after extraction)
+          UPDATER_PATH=$(find . -name "plutonium-updater" -type f -executable | head -n 1)
+          if [ -z "$UPDATER_PATH" ]; then
+            echo "Error: Could not find plutonium-updater binary"
+            exit 1
+          fi
+          echo "Running updater from $UPDATER_PATH"
           # -l: Download launcher assets
           # -d: Specify directory
-          ./plutonium-updater -l -d ./plutonium_data
+          "$UPDATER_PATH" -l -d ./plutonium_data
 
       - name: Prepare Files for Upload
         run: |
