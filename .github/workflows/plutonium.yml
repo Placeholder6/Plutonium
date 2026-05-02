@@ -1,0 +1,74 @@
+name: Plutonium Downloader
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  run-and-upload:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Plutonium Updater
+        # NOTE: If plutonium.exe requires a login to download specific files, 
+        # you may need to provide credentials or a session file.
+        # This script assumes it can run headless for basic updates.
+        shell: pwsh
+        run: |
+          Write-Host "Starting plutonium.exe..."
+          # Start the process. We use -PassThru to get the process object.
+          $process = Start-Process -FilePath "./plutonium.exe" -ArgumentList "-update" -PassThru
+          
+          # Wait for a reasonable amount of time for downloads to complete.
+          # Plutonium's core files are around 100-200MB.
+          Write-Host "Waiting 3 minutes for downloads to complete..."
+          Start-Sleep -Seconds 180
+          
+          # Check if the process is still running and kill it if so.
+          if (-not $process.HasExited) {
+              Write-Host "Closing plutonium.exe..."
+              Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+          } else {
+              Write-Host "Plutonium finished naturally."
+          }
+
+      - name: Check for downloaded files
+        shell: pwsh
+        run: |
+          $plutoniumPath = "$env:LOCALAPPDATA\Plutonium"
+          if (Test-Path $plutoniumPath) {
+              Write-Host "Found Plutonium data at: $plutoniumPath"
+              Get-ChildItem -Path $plutoniumPath -Recurse | Select-Object FullName
+          } else {
+              Write-Error "Plutonium data directory not found at $plutoniumPath. Check if the updater ran correctly."
+              exit 1
+          }
+
+      - name: Prepare Files for Upload
+        shell: pwsh
+        run: |
+          # Create a directory to gather all files
+          New-Item -ItemType Directory -Path "dist"
+          
+          # Copy downloaded files from AppData
+          if (Test-Path "$env:LOCALAPPDATA\Plutonium") {
+              Copy-Item -Path "$env:LOCALAPPDATA\Plutonium\*" -Destination "dist" -Recurse -Force
+          }
+          
+          # Copy files from the current directory, excluding the 'dist' folder and the zip itself
+          # We want to capture things like plutonium-launcher-win32.exe if they were downloaded to root
+          Get-ChildItem -Path "." -Exclude "dist", ".github", "plutonium_bundle.zip" | Copy-Item -Destination "dist" -Force
+          
+          # Zip the contents
+          Compress-Archive -Path "dist\*" -DestinationPath "plutonium_bundle.zip"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: plutonium-bundle
+          path: plutonium_bundle.zip
+          retention-days: 5

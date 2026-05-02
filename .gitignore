@@ -1,0 +1,11 @@
+# Executables
+*.exe
+*.new
+
+# GitHub Actions local data
+dist/
+plutonium_bundle.zip
+
+# System / Temp
+.DS_Store
+Thumbs.db
